@@ -105,9 +105,12 @@ bool CalibCornerPatch::IterateOnImageWithDrawing(CalibCornerPatch::Params &param
 bool CalibCornerPatch::IterateOnImage(CalibCornerPatch::Params &params, Image<byte> &im)
 {
   mParams = params;
+
   double dLastUpdate = 0.0;
   for(int i=0; i<20; i++)
   {
+
+    // std::cout << mParams.v2Pos[0] << std::endl;
     MakeTemplateWithCurrentParams();
     dLastUpdate = Iterate(im);
 
@@ -174,10 +177,15 @@ double CalibCornerPatch::Iterate(Image<byte> &im)
     //reject bogus updates
   if(std::isnan(v6Update[4]) || std::isnan(v6Update[5])){
     return -1.0;
-  } 
-  
+  }
+
+  if( std::isnan(v6Update[0]) || std::isnan(v6Update[1]) ){
+      return -1.0;
+  }
+
   mParams.v2Pos += v6Update.slice<0,2>();
   mParams.v2Angles += v6Update.slice<2,2>();
+  mParams.dMean += v6Update[4];
   mParams.dMean += v6Update[4];
   mParams.dGain += v6Update[5];
   mdLastError = dSum / mimTemplate.size().area();

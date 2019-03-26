@@ -21,6 +21,7 @@ find_package(catkin REQUIRED COMPONENTS
 )
 
 find_package(OpenCV REQUIRED)
+include_directories(${OpenCV_INCLUDE_DIRS})
 
 generate_dynamic_reconfigure_options(cfg/PTAMVisualizerParams.cfg cfg/PtamParams.cfg)
 
@@ -108,7 +109,7 @@ set(PTAM_LIBRARIES GL glut cvd GVars3_headless agast blas lapack)
 
 add_definitions(-DCVD_HAVE_TOON)
 add_definitions(-DKF_REPROJ)
-set(CMAKE_BUILD_TYPE Release)
+# set(CMAKE_BUILD_TYPE Release)
 
 # PTAM executable
 add_executable(ptam ${PTAM_SOURCE_FILES} ${PTAM_HEADER_FILES})
@@ -116,6 +117,11 @@ set_property(TARGET ptam APPEND_STRING PROPERTY COMPILE_FLAGS "-D_LINUX -D_REENT
 IF(CMAKE_BUILD_TYPE MATCHES Release)
  set_property(TARGET ptam APPEND_STRING PROPERTY COMPILE_FLAGS "-O3 ")
  SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsee -funsafe-loop-optimizations -fno-signed-zeros -fno-math-errno -funroll-loops")
+ELSE()
+set_property(TARGET ptam APPEND_STRING PROPERTY COMPILE_FLAGS "-O0 ")
+SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsee -funsafe-loop-optimizations -fno-signed-zeros -fno-math-errno -funroll-loops")
+  message(WARNING "DEBUG MODE")
+
 ENDIF(CMAKE_BUILD_TYPE MATCHES Release)
 add_dependencies(ptam DEPS ${${PROJECT_NAME}_EXPORTED_TARGETS}})
 

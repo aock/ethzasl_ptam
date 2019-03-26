@@ -7,6 +7,9 @@
 #include <fstream>
 #include <stdlib.h>
 
+#include <cv.hpp>
+#include <cv_bridge/cv_bridge.h>
+
 #include <cvd/image.h>
 #include <cvd/byte.h>
 #include <cvd/rgb.h>
@@ -14,6 +17,8 @@
 
 #include <ros/ros.h>
 #include <ros/package.h>
+
+
 
 using namespace CVD;
 using namespace std;
@@ -25,7 +30,6 @@ Vector<NUMTRACKERCAMPARAMETERS> camparams;
 
 int main(int argc, char** argv)
 {
-
   ros::init(argc, argv, "cameracalibrator");
   ROS_INFO("starting CameraCalibrator with node name %s", ros::this_node::getName().c_str());
 
@@ -53,17 +57,35 @@ int main(int argc, char** argv)
   }
 }
 
-void CameraCalibrator::imageCallback(const sensor_msgs::ImageConstPtr & img)
+void CameraCalibrator::grabImages() 
 {
+    cv::VideoCapture cap(0);
+    if (!cap.isOpened()) {
+        std::cout << "!!! Failed to open webcam" << std::endl;
+        return;
+    }
 
-  ROS_ASSERT(img->encoding == sensor_msgs::image_encodings::MONO8 && img->step == img->width);
 
-  CVD::ImageRef size(img->width, img->height);
-  mCurrentImage.resize(size);
+    // this for loop has the same framerate like the camera
+    for(;;)
+    {
+        cv::Mat frame;
+        cap >> frame; // get a new frame from camera
+        if(frame.channels() == 3)
+        {
+          cv::cvtColor(frame, frame, cv::COLOR_BGR2GRAY);
+        }
+        
+      
+        CVD::ImageRef size(frame.cols, frame.rows);
 
-  CVD::BasicImage<CVD::byte> img_tmp((CVD::byte *)&img->data[0], size);
-  CVD::copy(img_tmp, mCurrentImage);
-  mNewImage = true;
+        CVD::BasicImage<CVD::byte> img_tmp((CVD::byte *)&frame.data[0], size);
+        m_image_lock.lock();
+        mCurrentImage.resize(size);
+        CVD::copy(img_tmp, mCurrentImage);
+        mNewImage = true;
+        m_image_lock.unlock();
+    }
 }
 
 CameraCalibrator::CameraCalibrator() :
@@ -71,17 +93,24 @@ CameraCalibrator::CameraCalibrator() :
 {
   ros::NodeHandle nh;
   image_transport::ImageTransport it(nh);
-  mImageSub = it.subscribe("image", 1, &CameraCalibrator::imageCallback, this);
+  // mImageSub = it.subscribe("image", 1, &CameraCalibrator::imageCallback, this);
+
+  m_image_grabber_thread = new boost::thread(&CameraCalibrator::grabImages, this);
+  
 }
 
 CameraCalibrator::~CameraCalibrator()
 {
+  std::cout << "try to delete thread" << std::endl;
+  m_image_grabber_thread->interrupt();
   delete mGLWindow;
 }
 
 void CameraCalibrator::init()
 {
+  m_image_lock.lock();
   mGLWindow = new GLWindow2(mCurrentImage.size(), "Camera Calibrator");
+  m_image_lock.unlock();
 
   GUI.RegisterCommand("CameraCalibrator.GrabNextFrame", GUICommandCallBack, this);
   GUI.RegisterCommand("CameraCalibrator.Reset", GUICommandCallBack, this);
@@ -139,14 +168,19 @@ void CameraCalibrator::Run()
     if (!*mgvnOptimizing)
     {
       GUI.ParseLine("CalibMenu.ShowMenu Live");
+      m_image_lock.lock();
       glDrawPixels(mCurrentImage);
+      m_image_lock.unlock();
       mDoOptimize = true; // set this so that optimization begins when "optimize" is pressed)
 
       if (mNewImage)
       {
         mNewImage = false;
         CalibImage c;
-        if (c.MakeFromImage(mCurrentImage))
+        m_image_lock.lock();
+        bool make_success = c.MakeFromImage(mCurrentImage);
+        m_image_lock.unlock();
+        if (make_success)
         {
           if (mbGrabNextFrame)
           {
@@ -207,7 +241,9 @@ void CameraCalibrator::Reset()
   if (*mgvnDisableDistortion)
     mCamera.DisableRadialDistortion();
 
+  m_image_lock.lock();
   mCamera.SetImageSize(mCurrentImage.size());
+  m_image_lock.unlock();
   mbGrabNextFrame = false;
   *mgvnOptimizing = false;
   mvCalibImgs.clear();

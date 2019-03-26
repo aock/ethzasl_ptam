@@ -10,6 +10,8 @@
 #include <ros/ros.h>
 #include <image_transport/image_transport.h>
 #include <sensor_msgs/image_encodings.h>
+#include <boost/thread.hpp>
+
 
 class CameraCalibrator
 {
@@ -36,14 +38,18 @@ protected:
 
   double mdMeanPixelError;
 
+  boost::mutex m_image_lock;
   CVD::Image<CVD::byte> mCurrentImage;
-  image_transport::Subscriber mImageSub;
+
   bool mDoOptimize;
   bool mNewImage;
-  void imageCallback(const sensor_msgs::ImageConstPtr & img);
+  void grabImages();
 
   void GUICommandHandler(std::string sCommand, std::string sParams);
   static void GUICommandCallBack(void* ptr, std::string sCommand, std::string sParams);
+
+  boost::thread* m_image_grabber_thread;
+  
 };
 
 #endif
