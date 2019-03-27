@@ -40,10 +40,12 @@ protected:
 
   boost::mutex m_image_lock;
   CVD::Image<CVD::byte> mCurrentImage;
+  image_transport::Subscriber mImageSub;
 
   bool mDoOptimize;
   bool mNewImage;
   void grabImages();
+  void imageCallback(const sensor_msgs::ImageConstPtr & img);
 
   void GUICommandHandler(std::string sCommand, std::string sParams);
   static void GUICommandCallBack(void* ptr, std::string sCommand, std::string sParams);

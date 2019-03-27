@@ -57,6 +57,19 @@ int main(int argc, char** argv)
   }
 }
 
+void CameraCalibrator::imageCallback(const sensor_msgs::ImageConstPtr & img)
+{
+
+  ROS_ASSERT(img->encoding == sensor_msgs::image_encodings::MONO8 && img->step == img->width);
+
+  CVD::ImageRef size(img->width, img->height);
+  mCurrentImage.resize(size);
+
+  CVD::BasicImage<CVD::byte> img_tmp((CVD::byte *)&img->data[0], size);
+  CVD::copy(img_tmp, mCurrentImage);
+  mNewImage = true;
+}
+
 void CameraCalibrator::grabImages() 
 {
     cv::VideoCapture cap(0);
@@ -92,16 +105,26 @@ CameraCalibrator::CameraCalibrator() :
       mCamera("Camera"), mbDone(false), mCurrentImage(CVD::ImageRef(752, 480)), mDoOptimize(false), mNewImage(false)
 {
   ros::NodeHandle nh;
-  image_transport::ImageTransport it(nh);
-  // mImageSub = it.subscribe("image", 1, &CameraCalibrator::imageCallback, this);
+  ros::NodeHandle nh_p("~");
 
-  m_image_grabber_thread = new boost::thread(&CameraCalibrator::grabImages, this);
+  std::string image_input_type;
+  nh_p.param<std::string>("ImageInput", image_input_type, "ros");
+
+  if(image_input_type == "ros")
+  {
+    image_transport::ImageTransport it(nh);
+    ROS_INFO("USE ROS AS IMAGE INPUT");
+    mImageSub = it.subscribe("image", 1, &CameraCalibrator::imageCallback, this);
+  } else {
+    ROS_INFO("USE CV AS IMAGE INPUT");
+    m_image_grabber_thread = new boost::thread(&CameraCalibrator::grabImages, this);
+  }
+  
   
 }
 
 CameraCalibrator::~CameraCalibrator()
 {
-  std::cout << "try to delete thread" << std::endl;
   m_image_grabber_thread->interrupt();
   delete mGLWindow;
 }
