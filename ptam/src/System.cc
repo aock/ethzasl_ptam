@@ -272,12 +272,14 @@ void System::publishPoseAndInfo(const std_msgs::Header & header)
   static float fps = 0;
   static double last_time = 0;
 
-  std::string frame_id(header.frame_id);
+  std::string cam_frame_id(header.frame_id);
+  std::string world_frame_id(PtamParameters::fixparams().parent_frame);
 
-  if (frame_id == "")
+
+  if (cam_frame_id == "")
   {
     ROS_WARN_ONCE("camera frame id not set, will set it to \"ptam\"");
-    frame_id = "ptam";
+    cam_frame_id = "ptam";
   }
 
   if (scale <= 0)
@@ -294,14 +296,14 @@ void System::publishPoseAndInfo(const std_msgs::Header & header)
     TooN::Vector<3, double> t_ptam =  pose.get_translation();
 
     tf::StampedTransform transform_ptam(tf::Transform(tf::Matrix3x3(r_ptam(0, 0), r_ptam(0, 1), r_ptam(0, 2), r_ptam(1, 0), r_ptam(1, 1), r_ptam(1, 2), r_ptam(2, 0), r_ptam(2, 1), r_ptam(2, 2))
-    , tf::Vector3(t_ptam[0] / scale, t_ptam[1] / scale, t_ptam[2] / scale)), header.stamp, frame_id, PtamParameters::fixparams().parent_frame);
+    , tf::Vector3(t_ptam[0] / scale, t_ptam[1] / scale, t_ptam[2] / scale)), header.stamp, cam_frame_id, world_frame_id);
 
     //camera in the world frame
     TooN::Matrix<3, 3, double> r_world = pose.get_rotation().get_matrix().T();
     TooN::Vector<3, double> t_world =  - r_world * pose.get_translation();
 
     tf::StampedTransform transform_world(tf::Transform(tf::Matrix3x3(r_world(0, 0), r_world(0, 1), r_world(0, 2), r_world(1, 0), r_world(1, 1), r_world(1, 2), r_world(2, 0), r_world(2, 1), r_world(2, 2))
-        , tf::Vector3(t_world[0] / scale, t_world[1] / scale, t_world[2] / scale)), header.stamp, PtamParameters::fixparams().parent_frame, frame_id);
+        , tf::Vector3(t_world[0] / scale, t_world[1] / scale, t_world[2] / scale)), header.stamp, world_frame_id, cam_frame_id);
 
     tf_pub_.sendTransform(transform_world);
 
@@ -309,15 +311,8 @@ void System::publishPoseAndInfo(const std_msgs::Header & header)
     {
       //world in the camera frame
       geometry_msgs::PoseWithCovarianceStampedPtr msg_pose(new geometry_msgs::PoseWithCovarianceStamped);
-      const tf::Quaternion & q_tf_ptam = transform_ptam.getRotation();
-      const tf::Vector3 & t_tf_ptam = transform_ptam.getOrigin();
-      msg_pose->pose.pose.orientation.w = q_tf_ptam.w();
-      msg_pose->pose.pose.orientation.x = q_tf_ptam.x();
-      msg_pose->pose.pose.orientation.y = q_tf_ptam.y();
-      msg_pose->pose.pose.orientation.z = q_tf_ptam.z();
-      msg_pose->pose.pose.position.x = t_tf_ptam.x();
-      msg_pose->pose.pose.position.y = t_tf_ptam.y();
-      msg_pose->pose.pose.position.z = t_tf_ptam.z();
+
+      tf::poseTFToMsg(transform_ptam, msg_pose->pose.pose);
 
       TooN::Matrix<6> covar = mpTracker->GetCurrentCov();
       for (unsigned int i = 0; i < msg_pose->pose.covariance.size(); i++)
@@ -328,15 +323,7 @@ void System::publishPoseAndInfo(const std_msgs::Header & header)
 
 
       //camera in the world frame
-      const tf::Quaternion & q_tf_world = transform_world.getRotation();
-      const tf::Vector3 & t_tf_world = transform_world.getOrigin();
-      msg_pose->pose.pose.orientation.w = q_tf_world.w();
-      msg_pose->pose.pose.orientation.x = q_tf_world.x();
-      msg_pose->pose.pose.orientation.y = q_tf_world.y();
-      msg_pose->pose.pose.orientation.z = q_tf_world.z();
-      msg_pose->pose.pose.position.x = t_tf_world.x();
-      msg_pose->pose.pose.position.y = t_tf_world.y();
-      msg_pose->pose.pose.position.z = t_tf_world.z();
+      tf::poseTFToMsg(transform_world, msg_pose->pose.pose);
 
       TooN::Matrix<6> CovRot;
       CovRot.slice(0,0,3,3) = r_ptam;
@@ -347,6 +334,7 @@ void System::publishPoseAndInfo(const std_msgs::Header & header)
       for (unsigned int i = 0; i < msg_pose->pose.covariance.size(); i++)
         msg_pose->pose.covariance[i] = sqrt(fabs(covar_world[i % 6][i / 6]));
 
+      msg_pose->header.frame_id = world_frame_id;
       pub_pose_world_.publish(msg_pose);
 
     }
